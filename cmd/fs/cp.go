@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/databricks/cli/cmd/root"
 	"github.com/databricks/cli/libs/cmdio"
@@ -126,6 +127,12 @@ func (c *copy) emitFileCopiedEvent(sourcePath, targetPath string) error {
 	return cmdio.RenderWithTemplate(c.ctx, event, "", template)
 }
 
+// hasTrailingDirSeparator checks if a path ends with a directory separator.
+// It handles both Unix-style (/) and Windows-style (\) separators for cross-platform compatibility.
+func hasTrailingDirSeparator(path string) bool {
+	return strings.HasSuffix(path, "/") || strings.HasSuffix(path, "\\")
+}
+
 func newCpCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cp SOURCE_PATH TARGET_PATH",
@@ -188,6 +195,28 @@ func newCpCommand() *cobra.Command {
 		// case 1: source path is a directory, then recursively create files at target path
 		if sourceInfo.IsDir() {
 			return c.cpDirToDir(sourcePath, targetPath)
+		}
+
+		// Check if target path has a trailing directory separator, indicating it should be a directory.
+		// If it has a trailing separator, we must verify the directory exists (matching Linux cp behavior).
+		// Normalize paths to handle Windows backslashes correctly.
+		normalizedTargetPathForCheck := filepath.ToSlash(targetPath)
+		if hasTrailingDirSeparator(fullTargetPath) || hasTrailingDirSeparator(normalizedTargetPathForCheck) {
+			// Normalize the target path by removing all trailing separators for Stat check.
+			// Use the original targetPath (not normalized) for the Stat call, as filers expect
+			// the appropriate separator for their platform (backslash for Windows local, forward slash for DBFS).
+			normalizedTargetPath := strings.TrimRight(strings.TrimRight(targetPath, "/"), "\\")
+			targetInfo, err := targetFiler.Stat(ctx, normalizedTargetPath)
+			if err != nil {
+				// Directory does not exist - match Linux cp behavior by returning an error
+				return fmt.Errorf("directory %s does not exist", fullTargetPath)
+			}
+			if !targetInfo.IsDir() {
+				// Path exists but is not a directory - also error to match Linux cp behavior
+				return fmt.Errorf("directory %s does not exist", fullTargetPath)
+			}
+			// Directory exists, copy file into it
+			return c.cpFileToDir(sourcePath, normalizedTargetPath)
 		}
 
 		// case 2: source path is a file, and target path is a directory. In this case
