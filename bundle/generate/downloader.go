@@ -73,7 +73,7 @@ func (n *Downloader) markFileForDownload(ctx context.Context, filePath *string) 
 		return err
 	}
 
-	*filePath = rel
+	*filePath = filepath.ToSlash(rel)
 	return nil
 }
 
@@ -109,7 +109,7 @@ func (n *Downloader) MarkDirectoryForDownload(ctx context.Context, dirPath *stri
 		return err
 	}
 
-	*dirPath = rel
+	*dirPath = filepath.ToSlash(rel)
 	return nil
 }
 
@@ -203,8 +203,54 @@ func (n *Downloader) markNotebookForDownload(ctx context.Context, notebookPath *
 		return err
 	}
 
-	*notebookPath = rel
+	*notebookPath = filepath.ToSlash(rel)
 	return nil
+}
+
+func (n *Downloader) MarkTasksForDownload(ctx context.Context, tasks []jobs.Task) error {
+	var paths []string
+	for _, task := range tasks {
+		if task.NotebookTask != nil {
+			paths = append(paths, task.NotebookTask.NotebookPath)
+		}
+	}
+	if len(paths) > 0 {
+		n.basePath = commonDirPrefix(paths)
+	}
+	for i := range tasks {
+		if err := n.MarkTaskForDownload(ctx, &tasks[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// commonDirPrefix returns the longest common directory-aligned prefix of the given paths.
+func commonDirPrefix(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	if len(paths) == 1 {
+		return path.Dir(paths[0])
+	}
+
+	prefix := paths[0]
+	for _, p := range paths[1:] {
+		for !strings.HasPrefix(p, prefix) {
+			prefix = prefix[:len(prefix)-1]
+			if prefix == "" {
+				return ""
+			}
+		}
+	}
+
+	// Truncate to last '/' to ensure directory alignment.
+	if i := strings.LastIndex(prefix, "/"); i >= 0 {
+		prefix = prefix[:i]
+	} else {
+		prefix = ""
+	}
+	return prefix
 }
 
 func (n *Downloader) relativePath(fullPath string) string {
