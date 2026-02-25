@@ -28,15 +28,17 @@ import (
 )
 
 const (
-	templatePathEnvVar  = "DATABRICKS_APPKIT_TEMPLATE_PATH"
-	appkitRepoURL       = "https://github.com/databricks/appkit"
-	appkitTemplateDir   = "template"
-	appkitDefaultBranch = "main"
-	defaultProfile      = "DEFAULT"
+	templatePathEnvVar   = "DATABRICKS_APPKIT_TEMPLATE_PATH"
+	appkitRepoURL        = "https://github.com/databricks/appkit"
+	appkitTemplateDir    = "template"
+	appkitDefaultBranch  = "main"
+	appkitTemplateTagPfx = "template-v"
+	defaultProfile       = "DEFAULT"
 )
 
-// normalizeVersion ensures the version string has a "v" prefix if it looks like a semver.
-// Examples: "0.3.0" -> "v0.3.0", "v0.3.0" -> "v0.3.0", "latest" -> "main"
+// normalizeVersion converts a version string to the template tag format "template-vX.X.X".
+// Examples: "0.3.0" -> "template-v0.3.0", "v0.3.0" -> "template-v0.3.0",
+// "template-v0.3.0" -> "template-v0.3.0", "latest" -> "main"
 func normalizeVersion(version string) string {
 	if version == "" {
 		return version
@@ -44,9 +46,14 @@ func normalizeVersion(version string) string {
 	if version == "latest" {
 		return appkitDefaultBranch
 	}
-	// If it starts with a digit, prepend "v"
-	if len(version) > 0 && version[0] >= '0' && version[0] <= '9' {
-		return "v" + version
+	if strings.HasPrefix(version, appkitTemplateTagPfx) {
+		return version
+	}
+	if strings.HasPrefix(version, "v") {
+		return appkitTemplateTagPfx + version[1:]
+	}
+	if version[0] >= '0' && version[0] <= '9' {
+		return appkitTemplateTagPfx + version
 	}
 	return version
 }
